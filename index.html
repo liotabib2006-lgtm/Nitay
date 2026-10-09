@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Slope Neon 3D</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;overflow:hidden;background:#050608;font-family:Arial,sans-serif;color:white;touch-action:none}
+canvas{display:block}
+#hud{position:fixed;top:14px;left:16px;z-index:2;font-size:17px;font-weight:bold;line-height:1.8;text-shadow:0 0 10px #00ff55;pointer-events:none}
+#title{position:fixed;top:14px;right:16px;color:#00ff55;font-size:20px;font-weight:bold;letter-spacing:3px;text-shadow:0 0 12px #00ff55}
+#screen{position:fixed;inset:0;z-index:5;background:rgba(0,0,0,.78);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
+h1{font-size:clamp(38px,9vw,68px);color:#00ff55;text-shadow:0 0 24px #00ff55;margin:0 0 12px}
+p{font-size:17px;line-height:1.6}
+button{font-family:Arial,sans-serif;font-weight:bold;color:white;background:#101b14;border:2px solid #00ff55;border-radius:10px;padding:12px;font-size:18px;touch-action:none}
+#start{margin-top:20px;padding:15px 32px;font-size:20px}
+#controls{position:fixed;bottom:18px;left:15px;right:15px;z-index:3;display:flex;justify-content:space-between;align-items:end;pointer-events:none}
+.pad{display:grid;grid-template-columns:58px 58px 58px;grid-template-rows:52px 52px;gap:5px}
+.pad button,#jump{pointer-events:auto;background:#111b15dd}
+#up{grid-column:2;grid-row:1}
+#left{grid-column:1;grid-row:2}
+#down{grid-column:2;grid-row:2}
+#right{grid-column:3;grid-row:2}
+#jump{height:58px;min-width:84px}
+small{line-height:1.8;color:#ddd}
+</style>
+</head>
+<body>
+
+<div id="hud">
+<div>SCORE: <span id="score">0</span></div>
+<div>BEST: <span id="best">0</span></div>
+<div>SPEED: <span id="speed">1.0</span></div>
+</div>
+<div id="title">SLOPE 3D</div>
+
+<div id="screen">
+<h1 id="heading">SLOPE 3D</h1>
+<p id="description">Roll fast. Dodge red obstacles. Don't fall off the track.</p>
+<small>Computer: Arrow keys or WASD<br>Mobile: Use the controls below<br>Space: Jump</small>
+<button id="start">START GAME</button>
+</div>
+
+<div id="controls">
+<div class="pad">
+<button id="up">UP</button>
+<button id="left">LEFT</button>
+<button id="down">DOWN</button>
+<button id="right">RIGHT</button>
+</div>
+<button id="jump">JUMP</button>
+</div>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js';
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050608);
+scene.fog = new THREE.Fog(0x050608, 35, 150);
+
+const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.1, 300);
+camera.position.set(0, 5, 9);
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x050608);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0x91aaff, 0x171717, 1.8));
+
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(-5, 12, 5);
+scene.add(sun);
+
+const greenGlow = new THREE.PointLight(0x00ff55, 3, 12);
+scene.add(greenGlow);
+
+const slope = 0.035;
+const roadWidth = 9;
+const segmentLength = 20;
+const segmentCount = 12;
+
+function roadY(z){ return z * slope; }
+
+const roadMaterial = new THREE.MeshStandardMaterial({
+  color:0x25282c, roughness:0.8, metalness:0.1
+});
+const greenMaterial = new THREE.MeshBasicMaterial({color:0x00ff55});
+const darkLineMaterial = new THREE.MeshBasicMaterial({color:0x101510});
+
+const roadSegments = [];
+
+for(let i=0;i<segmentCount;i++){
+  const group = new THREE.Group();
+
+  const road = new THREE.Mesh(
+    new THREE.BoxGeometry(roadWidth, 0.3, segmentLength),
+    roadMaterial
+  );
+  road.position.y = -0.15;
+  group.add(road);
+
+  for(const side of [-1,1]){
+    const rail = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12,0.12,segmentLength),
+      greenMaterial
+    );
+    rail.position.set(side*roadWidth/2,0.02,0);
+    group.add(rail);
+  }
+
+  for(const x of [-2,0,2]){
+    const line = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035,0.012,segmentLength),
+      darkLineMaterial
+    );
+    line.position.set(x,0.01,0);
+    group.add(line);
+  }
+
+  const z = -i*segmentLength;
+  group.position.set(0,roadY(z),z);
+  group.rotation.x = -Math.atan(slope);
+
+  scene.add(group);
+  roadSegments.push(group);
+}
+
+const ball = new THREE.Mesh(
+  new THREE.SphereGeometry(0.48,32,32),
+  new THREE.MeshStandardMaterial({
+    color:0x44ff66,
+    emissive:0x00ff33,
+    emissiveIntensity:1.6,
+    roughness:0.22,
+    metalness:0.25
+  })
+);
+scene.add(ball);
+
+const ballRing = new THREE.Mesh(
+  new THREE.TorusGeometry(0.5,0.025,8,40),
+  greenMaterial
+);
+ball.add(ballRing);
+ballRing.rotation.x = Math.PI/2;
+
+const obstacleMaterial = new THREE.MeshStandardMaterial({
+  color:0xff1020,
+  emissive:0x9f0000,
+  emissiveIntensity:1.5,
+  roughness:0.3
+});
+
+const obstacles = [];
+const obstacleGeometry = new THREE.BoxGeometry(1.35,1.25,1.25);
+
+function randomLane(){
+  return (Math.random()*5.6)-2.8;
+}
+
+function createObstacle(z){
+  const mesh = new THREE.Mesh(obstacleGeometry,obstacleMaterial);
+  mesh.position.set(randomLane(),roadY(z)+0.65,z);
+  mesh.rotation.y = Math.random()*0.5;
+  scene.add(mesh);
+  obstacles.push(mesh);
+}
+
+for(let z=-22;z>-210;z-=13+Math.random()*9){
+  createObstacle(z);
+}
+
+const starsGeometry = new THREE.BufferGeometry();
+const starPositions = [];
+
+for(let i=0;i<650;i++){
+  starPositions.push(
+    (Math.random()-0.5)*150,
+    Math.random()*70-5,
+    -Math.random()*240
+  );
+}
+
+starsGeometry.setAttribute(
+  'position',
+  new THREE.Float32BufferAttribute(starPositions,3)
+);
+
+const stars = new THREE.Points(
+  starsGeometry,
+  new THREE.PointsMaterial({color:0x777f88,size:0.16})
+);
+scene.add(stars);
+
+const keys = {};
+let running = false;
+let x = 0;
+let ballHeight = 0;
+let jumpVelocity = 0;
+let speed = 15;
+let score = 0;
+let best = 0;
+let spawnDistance = 0;
+let gameTime = 0;
+
+function jump(){
+  if(running && ballHeight <= 0.001){
+    jumpVelocity = 8;
+  }
+}
+
+window.addEventListener('keydown',e=>{
+  const k=e.key.toLowerCase();
+  keys[k]=true;
+  if(['arrowleft','arrowright','arrowup','arrowdown',' '].includes(k)) e.preventDefault();
+  if(k===' ') jump();
+});
+
+window.addEventListener('keyup',e=>{
+  keys[e.key.toLowerCase()]=false;
+});
+
+function bindButton(id,key){
+  const b=document.getElementById(id);
+  b.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    keys[key]=true;
+    b.setPointerCapture(e.pointerId);
+  });
+  for(const ev of ['pointerup','pointercancel','lostpointercapture']){
+    b.addEventListener(ev,()=>keys[key]=false);
+  }
+}
+
+bindButton('left','arrowleft');
+bindButton('right','arrowright');
+bindButton('up','arrowup');
+bindButton('down','arrowdown');
+
+document.getElementById('jump').addEventListener('pointerdown',e=>{
+  e.preventDefault();
+  jump();
+});
+
+function endGame(){
+  if(!running)return;
+  running=false;
+  best=Math.max(best,Math.floor(score));
+  document.getElementById('best').textContent=best;
+  document.getElementById('heading').textContent='GAME OVER';
+  document.getElementById('description').textContent=
+    'Score: '+Math.floor(score)+'. Try again and beat your record.';
+  document.getElementById('start').textContent='PLAY AGAIN';
+  document.getElementById('screen').style.display='flex';
+}
+
+function resetGame(){
+  x=0;
+  ballHeight=0;
+  jumpVelocity=0;
+  speed=15;
+  score=0;
+  spawnDistance=0;
+  gameTime=0;
+
+  ball.position.set(0,0.5,3);
+  ball.rotation.set(0,0,0);
+
+  for(const o of obstacles) scene.remove(o);
+  obstacles.length=0;
+
+  for(let z=-22;z>-210;z-=13+Math.random()*9){
+    createObstacle(z);
+  }
+
+  roadSegments.forEach((g,i)=>{
+    const zz=-i*segmentLength;
+    g.position.set(0,roadY(zz),zz);
+  });
+
+  document.getElementById('score').textContent='0';
+  document.getElementById('speed').textContent='1.0';
+}
+
+document.getElementById('start').addEventListener('click',()=>{
+  resetGame();
+  running=true;
+  document.getElementById('screen').style.display='none';
+});
+
+const clock = new THREE.Clock();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),0.035);
+
+  if(running){
+    gameTime+=dt;
+    speed=Math.min(15+gameTime*0.55,38);
+
+    const movement=speed*dt;
+    score+=movement;
+    spawnDistance+=movement;
+
+    if(keys.arrowleft||keys.a) x-=7.5*dt;
+    if(keys.arrowright||keys.d) x+=7.5*dt;
+
+    x=THREE.MathUtils.clamp(x,-5.6,5.6);
+
+    if(keys.arrowup||keys.w) ballHeight=Math.min(ballHeight+2*dt,2);
+    if(keys.arrowdown||keys.s) ballHeight=Math.max(ballHeight-2*dt,0);
+
+    if(jumpVelocity!==0||ballHeight>0){
+      ballHeight+=jumpVelocity*dt;
+      jumpVelocity-=20*dt;
+      if(ballHeight<0){
+        ballHeight=0;
+        jumpVelocity=0;
+      }
+    }
+
+    ball.position.set(x,roadY(3)+0.48+ballHeight,3);
+    ball.rotation.x-=movement/0.48;
+    ball.rotation.z-=x*dt*0.4;
+    greenGlow.position.copy(ball.position);
+    greenGlow.position.y+=1;
+
+    for(const g of roadSegments){
+      g.position.z+=movement;
+      if(g.position.z>segmentLength){
+        g.position.z-=segmentCount*segmentLength;
+      }
+      g.position.y=roadY(g.position.z);
+    }
+
+    for(const o of obstacles){
+      o.position.z+=movement;
+      o.position.y=roadY(o.position.z)+0.65;
+      o.rotation.y+=dt*0.35;
+
+      if(
+        Math.abs(o.position.z-3)<0.95 &&
+        Math.abs(o.position.x-x)<1.05 &&
+        ballHeight<1.15
+      ){
+        endGame();
+        break;
+      }
+
+      if(o.position.z>12){
+        o.position.z=-190-Math.random()*45;
+        o.position.x=randomLane();
+        o.position.y=roadY(o.position.z)+0.65;
+      }
+    }
+
+    if(Math.abs(x)>4.8){
+      endGame();
+    }
+
+    document.getElementById('score').textContent=Math.floor(score);
+    document.getElementById('speed').textContent=(speed/15).toFixed(1);
+  }
+
+  camera.position.x+=(x*0.32-camera.position.x)*0.07;
+  camera.position.y+=(5.2+ballHeight*0.25-camera.position.y)*0.06;
+  camera.position.z=9;
+  camera.lookAt(x*0.2,roadY(0),-7);
+
+  renderer.render(scene,camera);
+}
+
+ball.position.set(0,0.5,3);
+animate();
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
+
+</body>
+</html>
